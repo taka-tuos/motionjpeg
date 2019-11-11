@@ -4,6 +4,8 @@
 
 int fps;
 
+void **jpegs;
+
 void adjustFPS(void) {
 	static long maetime = -1;
 	static int frame = 0;
@@ -22,7 +24,7 @@ void adjustFPS(void) {
 
 int poll_event(SDL_Event *sdl_event)
 {
-	if(SDL_PollEvent(sdl_event)) {
+	while(SDL_PollEvent(sdl_event)) {
 		switch (sdl_event->type) {
 		case SDL_QUIT:
 			return 1;
@@ -40,25 +42,45 @@ int main(int argc, char *argv[])
 
 	SDL_Init(SDL_INIT_VIDEO);
 	
-	int w,h;
+	int w,h,mpn;
 	
-	w = atoi(argv[1]);
-	h = atoi(argv[2]);
-	fps = atoi(argv[3]);
+	FILE *fp = fopen("movie.info","rt");
+	
+	w = atoi(fgets(malloc(256),256,fp));
+	h = atoi(fgets(malloc(256),256,fp));
+	fps = atoi(fgets(malloc(256),256,fp));
+	mpn = atoi(fgets(malloc(256),256,fp));
+	
+	fclose(fp);
+	
+	jpegs = (void **)malloc(sizeof(void *) * mpn);
+	
+	for(int i=0;i<mpn;i++) {
+		char fn[1024];
+		sprintf(fn,"movie_%d.jpg",i);
+		int aw,ah,dmy;
+		jpegs[i] = stbi_load(fn,&aw,&ah,&dmy,4);
+	}
 
 	SDL_SetVideoMode(w,h,32,SDL_SWSURFACE);
 	
 	sdl_surface = SDL_GetVideoSurface();
 	
 	int f=0;
-	int aw=0,ah=0,dmy;
-	unsigned int *pic = stbi_load("movie.jpg",&aw,&ah,&dmy,4);
+	unsigned int *pic=0;
+	int pn=0;
 	
 	while(!poll_event(&sdl_event)){
+		if((f % 64) == 0) {
+			if(pn >= mpn) break;
+			if(pic) stbi_image_free(pic);
+			pic = jpegs[pn];
+			pn++;
+		}
+		
 		for(int y=0;y<h;y++) {
 			for(int x=0;x<w;x++) {
-				int yofs = (f / 64) * (h * 8);
-				unsigned int rgb = pic[(yofs+y*8+((f%64)/8))*aw+(x*8+(f%8))];
+				unsigned int rgb = pic[(y*8+((f%64)/8))*(w*8)+(x*8+(f%8))];
 				
 				int r,g,b;
 				
@@ -72,7 +94,6 @@ int main(int argc, char *argv[])
 		SDL_UpdateRect(sdl_surface,0,0,0,0);
 		f++;
 		adjustFPS();
-		if((f / 64) * (h * 8) > ah) break;
 	}
 	
 	SDL_Quit();
